@@ -20,7 +20,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-OUTPUT_DIR = Path(__file__).parent
+OUTPUT_DIR = Path(__file__).parent / "data"
 CONTESTS_URL = "https://fantasy.grandarena.gg/contests"
 
 FILTER_TABS = ["Free", "100-499", "500-1000", "1000+"]
@@ -263,6 +263,9 @@ def save_json(contests: list[dict], path: Path):
 
 if __name__ == "__main__":
     headless = "--show" not in sys.argv   # pass --show to see the browser
+
+    # Ensure data directory exists
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     contests = scrape_all(headless=headless)
 

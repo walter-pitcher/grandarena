@@ -32,7 +32,7 @@ from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 # ── config ────────────────────────────────────────────────────────────────────
 
-OUTPUT_DIR   = Path(__file__).parent
+OUTPUT_DIR   = Path(__file__).parent / "data"
 BASE_URL     = "https://train.grandarena.gg/leaderboards"
 CATEGORIES   = [
     ("champion",     "Champion"),
@@ -405,6 +405,9 @@ if __name__ == "__main__":
     print(f"  category  : {only_category or 'both'}")
     print(f"  max_pages : {'all' if max_pages == 0 else max_pages} per category")
     print(f"  headless  : {headless}")
+
+    # Ensure data directory exists
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     entries = scrape_leaderboards(
         max_pages=max_pages, headless=headless, only_category=only_category
