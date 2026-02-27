@@ -52,7 +52,7 @@ if errorlevel 1 (
 echo.
 echo [4/4] Starting scraper - runs every 30 minutes. Press Ctrl+C to stop.
 echo ============================================================
-python run_scraping.py --every 30
+python run_scraping.py --leaderboards --pages 2 --max-rank 180 --every 30
 
 echo.
 echo Scraping stopped.
