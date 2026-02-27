@@ -9,6 +9,43 @@ All scraped data is written into a dedicated `data` directory so it is easy to k
 
 ---
 
+### How to run this project
+
+1. **Clone and enter the repo:**
+   ```bash
+   git clone <your-repo-url> grandarena
+   cd grandarena
+   ```
+
+2. **Create a virtual environment (recommended) and activate it:**
+   ```bash
+   python -m venv .venv
+   source .venv/Scripts/activate   # Git Bash / WSL
+   # or:  .venv\Scripts\activate   # cmd / PowerShell
+   ```
+
+3. **Install dependencies and Playwright browser:**
+   ```bash
+   pip install -r requirements.txt
+   playwright install chromium
+   ```
+
+4. **Run the scrapers:**
+   ```bash
+   python run_scraping.py
+   ```
+   This runs both the contest and leaderboard scrapers and writes CSV/JSON under `data/`.  
+   - Contests only: `python run_scraping.py --contests`  
+   - Leaderboards only: `python run_scraping.py --leaderboards`  
+   - Repeat every 30 minutes: `python run_scraping.py --every 30`  
+   - Show browser: `python run_scraping.py --show`
+
+**One-click (Windows):** Double-click `run.bat` to set up the venv, install deps, and start the scheduler (runs every 30 minutes until you press Ctrl+C).
+
+See sections below for prerequisites, data layout, and detailed options for each script.
+
+---
+
 ### 1. Prerequisites
 
 - **Python**: 3.10+ recommended
