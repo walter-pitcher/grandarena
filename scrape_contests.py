@@ -20,7 +20,8 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-OUTPUT_DIR = Path(__file__).parent / "data"
+# Write contest data into a dedicated subdirectory
+OUTPUT_DIR = Path(__file__).parent / "data" / "contests"
 CONTESTS_URL = "https://fantasy.grandarena.gg/contests"
 
 FILTER_TABS = ["Free", "100-499", "500-1000", "1000+"]
@@ -90,6 +91,8 @@ def parse_card(card) -> dict:
         # filled in after clicking the card:
         "star_rank_cap":          "",
         "slot_rarity_caps":       "",
+        # human-friendly combined rarity rule, derived after detail scrape
+        "rarity_restriction":     "",
         "date_scraped":           datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "filter_tab":             "",
     }
@@ -213,6 +216,15 @@ def scrape_all(headless: bool = True) -> list[dict]:
                         time.sleep(1.5)
                         detail = parse_detail_panel(page)
                         contest.update(detail)
+
+                        # Derive a single human-friendly rarity_restriction field
+                        rarity = (
+                            detail.get("slot_rarity_caps") or
+                            detail.get("star_rank_cap") or
+                            ""
+                        )
+                        contest["rarity_restriction"] = rarity or "Open"
+
                         close_detail_panel(page)
                         time.sleep(0.5)
                 except Exception as e:
@@ -237,7 +249,8 @@ FIELDNAMES = [
     "entry_fee",
     "spots_remaining",
     "max_entries_per_player",
-    "start_time",
+    "start_time",             # may be a clock time or countdown, as shown on site
+    "rarity_restriction",     # derived summary of rarity / star caps
     "star_rank_cap",
     "slot_rarity_caps",
     "filter_tab",
@@ -259,11 +272,11 @@ def save_json(contests: list[dict], path: Path):
     print(f"[OK] JSON -> {path}")
 
 
-# ── entry point ───────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    headless = "--show" not in sys.argv   # pass --show to see the browser
-
+def run_contest_scrape(headless: bool = True) -> dict:
+    """
+    Run the contest scraper and write both timestamped and *_latest files.
+    Returns a summary dict with counts and output paths for use by UIs / schedulers.
+    """
     # Ensure data directory exists
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -271,20 +284,34 @@ if __name__ == "__main__":
 
     if not contests:
         print("\n[!] No contests found. Check if the site requires a wallet login.")
-        sys.exit(1)
+        return {
+            "ok": False,
+            "count": 0,
+            "csv_paths": [],
+            "json_paths": [],
+        }
 
     print(f"\n[*] Total unique contests scraped: {len(contests)}")
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
-    csv_path  = OUTPUT_DIR / f"contests_{ts}.csv"
-    json_path = OUTPUT_DIR / f"contests_{ts}.json"
 
-    save_csv(contests,  csv_path)
-    save_json(contests, json_path)
+    # New, clearer filenames
+    csv_ts_new  = OUTPUT_DIR / f"contests_open_{ts}.csv"
+    json_ts_new = OUTPUT_DIR / f"contests_open_{ts}.json"
+    csv_latest_new  = OUTPUT_DIR / "contests_open_latest.csv"
+    json_latest_new = OUTPUT_DIR / "contests_open_latest.json"
 
-    # Also overwrite a "latest" file for easy access
-    save_csv(contests,  OUTPUT_DIR / "contests_latest.csv")
-    save_json(contests, OUTPUT_DIR / "contests_latest.json")
+    # Legacy filenames kept for backwards compatibility
+    csv_ts_legacy  = OUTPUT_DIR / f"contests_{ts}.csv"
+    json_ts_legacy = OUTPUT_DIR / f"contests_{ts}.json"
+    csv_latest_legacy  = OUTPUT_DIR / "contests_latest.csv"
+    json_latest_legacy = OUTPUT_DIR / "contests_latest.json"
+
+    # Write all variants
+    for path in (csv_ts_new, csv_ts_legacy, csv_latest_new, csv_latest_legacy):
+        save_csv(contests, path)
+    for path in (json_ts_new, json_ts_legacy, json_latest_new, json_latest_legacy):
+        save_json(contests, path)
 
     print("\n=== PREVIEW (first 3 rows) ===")
     for c in contests[:3]:
@@ -292,3 +319,27 @@ if __name__ == "__main__":
             safe_v = str(v).encode("ascii", "replace").decode("ascii")
             print(f"  {k:28s}: {safe_v}")
         print()
+
+    return {
+        "ok": True,
+        "count": len(contests),
+        "csv_paths": [
+            str(csv_ts_new),
+            str(csv_ts_legacy),
+            str(csv_latest_new),
+            str(csv_latest_legacy),
+        ],
+        "json_paths": [
+            str(json_ts_new),
+            str(json_ts_legacy),
+            str(json_latest_new),
+            str(json_latest_legacy),
+        ],
+    }
+
+
+# ── entry point ───────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    headless = "--show" not in sys.argv   # pass --show to see the browser
+    run_contest_scrape(headless=headless)

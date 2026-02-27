@@ -32,7 +32,9 @@ from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 # ── config ────────────────────────────────────────────────────────────────────
 
-OUTPUT_DIR   = Path(__file__).parent / "data"
+# Use dedicated subdirectories for leaderboard entries and Moki catalogue data.
+OUTPUT_DIR   = Path(__file__).parent / "data" / "leaderboards"
+MOKIS_OUTPUT_DIR = Path(__file__).parent / "data" / "mokis"
 BASE_URL     = "https://train.grandarena.gg/leaderboards"
 CATEGORIES   = [
     ("champion",     "Champion"),
@@ -234,7 +236,8 @@ def navigate_to_page_1(page):
 def scrape_leaderboards(
     max_pages: int = 0,
     headless: bool = True,
-    only_category: str = "",   # "" = both; "champion" or "non-champion"
+    only_category: str = "",        # "" = both; "champion" or "non-champion"
+    max_rank_per_category: int = 0, # 0 = no limit; otherwise stop after N ranks
 ) -> list[dict]:
     """
     max_pages=0  means scrape ALL pages.
@@ -277,6 +280,10 @@ def scrape_leaderboards(
                     print(f"    Reached max_pages={max_pages}, stopping.")
                     break
 
+                if max_rank_per_category > 0 and category_rank >= max_rank_per_category:
+                    print(f"    Reached max_rank_per_category={max_rank_per_category}, stopping.")
+                    break
+
                 print(f"\n  [Page {current_page}]")
                 rows = page.query_selector_all(ROW_SEL)
                 if not rows:
@@ -286,6 +293,10 @@ def scrape_leaderboards(
                 print(f"    {len(rows)} entries found")
 
                 for i, row in enumerate(rows):
+                    if max_rank_per_category > 0 and category_rank >= max_rank_per_category:
+                        print(f"    Rank limit {max_rank_per_category} reached for {cat_label}, skipping remaining rows on this page.")
+                        break
+
                     category_rank += 1
                     rank = category_rank
 
@@ -384,50 +395,115 @@ def save_json(entries: list[dict], path: Path):
     print(f"[OK] JSON -> {path}")
 
 
-# ── entry point ───────────────────────────────────────────────────────────────
+def build_unique_mokis(entries: list[dict]) -> list[dict]:
+    """
+    Aggregate a unique list of Mokis (Champions and Non-Champions) from
+    leaderboard entries. This is best-effort and depends on which Mokis
+    currently appear in the leaderboards.
 
-if __name__ == "__main__":
-    headless       = "--show" not in sys.argv
-    max_pages      = 0   # 0 = all pages
-    only_category  = ""  # "" = both
+    We key by moki_id where available, otherwise by (name, rarity, class).
+    For duplicates we keep the highest-score entry.
+    """
+    best_by_key: dict[tuple, dict] = {}
 
-    args = sys.argv[1:]
-    for i, arg in enumerate(args):
-        if arg == "--pages" and i + 1 < len(args):
-            try:
-                max_pages = int(args[i + 1])
-            except ValueError:
-                pass
-        if arg == "--category" and i + 1 < len(args):
-            only_category = args[i + 1].lower()
+    for e in entries:
+        moki_id = safe(e.get("moki_id", ""))
+        if moki_id:
+            key = ("id", moki_id)
+        else:
+            key = (
+                "fallback",
+                safe(e.get("moki_name", "")),
+                safe(e.get("rarity", "")),
+                safe(e.get("class", "")),
+            )
 
+        current_best = best_by_key.get(key)
+
+        raw_score = safe(e.get("score", "0")).replace(",", "")
+        try:
+            score_val = int(raw_score)
+        except ValueError:
+            score_val = 0
+
+        if current_best is None:
+            best_by_key[key] = {**e, "_score_val": score_val}
+        else:
+            prev_score_val = current_best.get("_score_val", 0)
+            if score_val > prev_score_val:
+                best_by_key[key] = {**e, "_score_val": score_val}
+
+    unique: list[dict] = []
+    for _, data in best_by_key.items():
+        data.pop("_score_val", None)
+        unique.append(data)
+
+    unique.sort(key=lambda d: (safe(d.get("rarity", "")), safe(d.get("moki_name", ""))))
+    return unique
+
+
+def run_leaderboard_scrape(
+    headless: bool = True,
+    max_pages: int = 0,
+    only_category: str = "",
+    max_rank_per_category: int = 0,
+) -> dict:
+    """
+    Run the leaderboard scraper and write:
+    - combined leaderboard entries (timestamped + *_latest, legacy + clearer names)
+    - per-category files
+    - unique Moki catalogue derived from all entries
+
+    Returns a summary dict for UIs / schedulers.
+    """
     print(f"Leaderboard scraper starting...")
-    print(f"  category  : {only_category or 'both'}")
-    print(f"  max_pages : {'all' if max_pages == 0 else max_pages} per category")
-    print(f"  headless  : {headless}")
+    print(f"  category          : {only_category or 'both'}")
+    print(f"  max_pages         : {'all' if max_pages == 0 else max_pages} per category")
+    print(f"  max_rank/category : {'all' if max_rank_per_category == 0 else max_rank_per_category}")
+    print(f"  headless          : {headless}")
 
-    # Ensure data directory exists
+    # Ensure data directories exist
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    MOKIS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     entries = scrape_leaderboards(
-        max_pages=max_pages, headless=headless, only_category=only_category
+        max_pages=max_pages,
+        headless=headless,
+        only_category=only_category,
+        max_rank_per_category=max_rank_per_category,
     )
 
     if not entries:
         print("\n[!] No entries scraped.")
-        sys.exit(1)
+        return {
+            "ok": False,
+            "entry_count": 0,
+            "moki_count": 0,
+            "csv_paths": [],
+            "json_paths": [],
+        }
 
     print(f"\n[*] Total entries scraped: {len(entries)}")
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
 
-    # Combined files
-    save_csv(entries,  OUTPUT_DIR / f"leaderboards_{ts}.csv")
-    save_json(entries, OUTPUT_DIR / f"leaderboards_{ts}.json")
-    save_csv(entries,  OUTPUT_DIR / "leaderboards_latest.csv")
-    save_json(entries, OUTPUT_DIR / "leaderboards_latest.json")
+    # Combined leaderboard files – new clearer names plus legacy ones
+    csv_ts_new  = OUTPUT_DIR / f"leaderboards_all_entries_{ts}.csv"
+    json_ts_new = OUTPUT_DIR / f"leaderboards_all_entries_{ts}.json"
+    csv_latest_new  = OUTPUT_DIR / "leaderboards_all_entries_latest.csv"
+    json_latest_new = OUTPUT_DIR / "leaderboards_all_entries_latest.json"
 
-    # Per-category files
+    csv_ts_legacy  = OUTPUT_DIR / f"leaderboards_{ts}.csv"
+    json_ts_legacy = OUTPUT_DIR / f"leaderboards_{ts}.json"
+    csv_latest_legacy  = OUTPUT_DIR / "leaderboards_latest.csv"
+    json_latest_legacy = OUTPUT_DIR / "leaderboards_latest.json"
+
+    for path in (csv_ts_new, csv_ts_legacy, csv_latest_new, csv_latest_legacy):
+        save_csv(entries, path)
+    for path in (json_ts_new, json_ts_legacy, json_latest_new, json_latest_legacy):
+        save_json(entries, path)
+
+    # Per-category files (names were already fairly clear; keep as-is)
     for cat_label, slug in [("Champion", "champion"), ("Non-Champion", "non_champion")]:
         subset = [e for e in entries if e["category"] == cat_label]
         if subset:
@@ -436,6 +512,20 @@ if __name__ == "__main__":
             save_csv(subset,  OUTPUT_DIR / f"leaderboards_{slug}_latest.csv")
             save_json(subset, OUTPUT_DIR / f"leaderboards_{slug}_latest.json")
             print(f"    ({cat_label}: {len(subset)} entries)")
+
+    # Build unique Moki catalogue from all entries
+    mokis_unique = build_unique_mokis(entries)
+    print(f"\n[*] Unique Mokis derived from leaderboards: {len(mokis_unique)}")
+
+    mokis_csv_ts  = MOKIS_OUTPUT_DIR / f"mokis_all_from_leaderboards_{ts}.csv"
+    mokis_json_ts = MOKIS_OUTPUT_DIR / f"mokis_all_from_leaderboards_{ts}.json"
+    mokis_csv_latest  = MOKIS_OUTPUT_DIR / "mokis_all_from_leaderboards_latest.csv"
+    mokis_json_latest = MOKIS_OUTPUT_DIR / "mokis_all_from_leaderboards_latest.json"
+
+    save_csv(mokis_unique, mokis_csv_ts)
+    save_json(mokis_unique, mokis_json_ts)
+    save_csv(mokis_unique, mokis_csv_latest)
+    save_json(mokis_unique, mokis_json_latest)
 
     # Print preview
     print("\n=== PREVIEW (first 5 entries) ===")
@@ -450,3 +540,59 @@ if __name__ == "__main__":
             f"rarity={e['rarity']}"
         )
         print(line)
+
+    return {
+        "ok": True,
+        "entry_count": len(entries),
+        "moki_count": len(mokis_unique),
+        "csv_paths": [
+            str(csv_ts_new),
+            str(csv_ts_legacy),
+            str(csv_latest_new),
+            str(csv_latest_legacy),
+            str(mokis_csv_ts),
+            str(mokis_csv_latest),
+        ],
+        "json_paths": [
+            str(json_ts_new),
+            str(json_ts_legacy),
+            str(json_latest_new),
+            str(json_latest_legacy),
+            str(mokis_json_ts),
+            str(mokis_json_latest),
+        ],
+    }
+
+
+# ── entry point ───────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    headless       = "--show" not in sys.argv
+    max_pages      = 0   # 0 = all pages
+    only_category  = ""  # "" = both
+    max_rank_per_category = 0  # 0 = no rank limit
+
+    args = sys.argv[1:]
+    for i, arg in enumerate(args):
+        if arg == "--pages" and i + 1 < len(args):
+            try:
+                max_pages = int(args[i + 1])
+            except ValueError:
+                pass
+        if arg == "--category" and i + 1 < len(args):
+            only_category = args[i + 1].lower()
+        if arg in ("--top", "--max-rank") and i + 1 < len(args):
+            try:
+                max_rank_per_category = int(args[i + 1])
+            except ValueError:
+                pass
+
+    summary = run_leaderboard_scrape(
+        headless=headless,
+        max_pages=max_pages,
+        only_category=only_category,
+        max_rank_per_category=max_rank_per_category,
+    )
+
+    if not summary.get("ok"):
+        sys.exit(1)

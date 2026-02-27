@@ -1,0 +1,5 @@
+# Grand Arena scrapers – Python dependencies
+# Install: pip install -r requirements.txt
+# Then:   playwright install chromium
+
+playwright>=1.40.0
