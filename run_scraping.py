@@ -3,17 +3,15 @@ Grand Arena – Scraping Runner / Simple Status Interface
 
 Provides a small command-line interface to run:
   - contest scraper (fantasy.grandarena.gg/contests)
-  - leaderboard + Moki scraper (train.grandarena.gg/leaderboards)
-
-and shows a clear, human-friendly status summary for each run.
+  - Moki data via API (fetch_mokis_api.py, no browser)
 
 Examples:
 
-  python run_scraping.py                 # run both scrapers (headless)
+  python run_scraping.py                 # contests + mokis (API)
   python run_scraping.py --contests      # contests only
-  python run_scraping.py --leaderboards  # leaderboards + Mokis only
-  python run_scraping.py --every 30     # run every 30 minutes until Ctrl+C
-  python run_scraping.py --show          # visible browser windows
+  python run_scraping.py --mokis         # mokis only (API)
+  python run_scraping.py --every 30      # contests + mokis every 30 min
+  python run_scraping.py --show          # visible browser (contests only)
 """
 
 from __future__ import annotations
@@ -24,8 +22,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
+from fetch_mokis_api import run_mokis_api
 from scrape_contests import run_contest_scrape
-from scrape_leaderboards import run_leaderboard_scrape
 
 
 def _ts() -> str:
@@ -42,32 +40,14 @@ def main() -> None:
         help="Run only the contests scraper.",
     )
     parser.add_argument(
-        "--leaderboards",
+        "--mokis",
         action="store_true",
-        help="Run only the leaderboards + Moki scraper.",
+        help="Run only Moki fetch (API).",
     )
     parser.add_argument(
         "--show",
         action="store_true",
-        help="Show browser windows (non-headless mode).",
-    )
-    parser.add_argument(
-        "--pages",
-        type=int,
-        default=0,
-        help="Limit pages per leaderboard category (0 = all pages).",
-    )
-    parser.add_argument(
-        "--category",
-        type=str,
-        default="",
-        help="Leaderboard category filter: 'champion', 'non-champion', or empty for both.",
-    )
-    parser.add_argument(
-        "--max-rank",
-        type=int,
-        default=0,
-        help="Maximum rank per leaderboard category (0 = no limit).",
+        help="Show browser windows (contests scraper only).",
     )
     parser.add_argument(
         "--every",
@@ -79,21 +59,17 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    run_contests = args.contests or not (args.contests or args.leaderboards)
-    run_leaders = args.leaderboards or not (args.contests or args.leaderboards)
+    run_contests = args.contests or not (args.contests or args.mokis)
+    run_mokis = args.mokis or not (args.contests or args.mokis)
     headless = not args.show
 
     print("=" * 72)
     print(f"[{_ts()}] Grand Arena scraping runner starting")
     print(f"  headless    : {headless}")
     print(f"  contests    : {run_contests}")
-    print(f"  leaderboards: {run_leaders}")
+    print(f"  mokis       : {run_mokis} (API)")
     if args.every:
         print(f"  schedule    : every {args.every} minute(s)")
-    if run_leaders:
-        print(f"  pages/category : {'all' if args.pages == 0 else args.pages}")
-        print(f"  category       : {args.category or 'both'}")
-        print(f"  max rank/cat   : {'all' if args.max_rank == 0 else args.max_rank}")
     print("=" * 72)
 
     def _run_contests():
@@ -114,19 +90,13 @@ def main() -> None:
             print(f"[{_ts()}] ✖ Contests scraper: no data scraped or error.")
         return summary
 
-    def _run_leaderboards():
-        print(f"\n[{_ts()}] ▶ Leaderboards scraper: starting")
-        summary = run_leaderboard_scrape(
-            headless=headless,
-            max_pages=args.pages,
-            only_category=args.category,
-            max_rank_per_category=args.max_rank,
-        )
+    def _run_mokis():
+        print(f"\n[{_ts()}] ▶ Mokis (API): starting")
+        summary = run_mokis_api()
         if summary.get("ok"):
             print(
-                f"[{_ts()}] ✔ Leaderboards scraper: "
-                f"{summary.get('entry_count', 0)} entries, "
-                f"{summary.get('moki_count', 0)} unique Mokis"
+                f"[{_ts()}] ✔ Mokis (API): "
+                f"{summary.get('entry_count', 0)} entries"
             )
             print("  CSV files:")
             for p in summary.get("csv_paths", []):
@@ -135,13 +105,13 @@ def main() -> None:
             for p in summary.get("json_paths", []):
                 print(f"    - {p}")
         else:
-            print(f"[{_ts()}] ✖ Leaderboards scraper: no data scraped or error.")
+            print(f"[{_ts()}] ✖ Mokis (API): no data or error.")
         return summary
 
     tasks = []
     tasks.append(("contests", _run_contests))
-    if run_leaders:
-        tasks.append(("leaderboards", _run_leaderboards))
+    if run_mokis:
+        tasks.append(("mokis", _run_mokis))
 
     def _run_tasks() -> None:
         if len(tasks) <= 1:
@@ -201,4 +171,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

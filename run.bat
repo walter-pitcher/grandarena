@@ -3,7 +3,8 @@ setlocal
 cd /d "%~dp0"
 
 echo ============================================================
-echo  Grand Arena - One-click run (install + scrape every 30 min)
+echo  Grand Arena - One-click run (install + mokis every 30 min)
+echo  Mokis: API only (no browser).
 echo ============================================================
 echo.
 
@@ -31,43 +32,30 @@ if not exist ".venv\Scripts\python.exe" (
 
 REM Activate venv and install dependencies
 echo.
-echo [2/4] Checking Python packages...
+echo [2/4] Installing Python packages...
 call .venv\Scripts\activate.bat
-python -c "import playwright" 2>nul
+pip install -q -r requirements.txt
 if errorlevel 1 (
-  echo       Installing required packages...
-  pip install -q -r requirements.txt
-  if errorlevel 1 (
-    echo ERROR: pip install failed.
-    pause
-    exit /b 1
-  )
-  echo       Done.
-) else (
-  echo       Packages already installed. Skipping.
+  echo ERROR: pip install failed.
+  pause
+  exit /b 1
 )
 
 echo.
-echo [3/4] Checking Playwright browser (Chromium)...
-python -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); e=p.chromium.executable_path; p.stop(); exit(0 if e and __import__('os').path.exists(e) else 1)" 2>nul
+echo [3/4] Installing Playwright browser (Chromium)...
+playwright install chromium
 if errorlevel 1 (
-  echo       Installing Chromium...
-  playwright install chromium
-  if errorlevel 1 (
-    echo ERROR: playwright install failed.
-    pause
-    exit /b 1
-  )
-  echo       Done.
-) else (
-  echo       Chromium already installed. Skipping.
+  echo ERROR: playwright install failed.
+  pause
+  exit /b 1
 )
 
 echo.
-echo [4/4] Starting scraper - runs every 30 minutes. Press Ctrl+C to stop.
+echo [4/4] Starting mokis fetch - runs every 30 minutes. Press Ctrl+C to stop.
+echo       Mokis are fetched via API.
 echo ============================================================
-python run_scraping.py --leaderboards --pages 2 --max-rank 180 --every 30
+python run_scraping.py --every 30
 
 echo.
-echo Scraping stopped.
+echo Stopped.
 pause

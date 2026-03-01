@@ -293,7 +293,7 @@ def run_contest_scrape(headless: bool = True) -> dict:
 
     print(f"\n[*] Total unique contests scraped: {len(contests)}")
 
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M")
 
     # New, clearer filenames
     csv_ts_new  = OUTPUT_DIR / f"contests_open_{ts}.csv"

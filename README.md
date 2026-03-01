@@ -1,11 +1,12 @@
 ## Grand Arena Scrapers
 
-This repository contains two Playwright-based scrapers for the Grand Arena ecosystem:
+This repository contains scrapers and an API fetcher for the Grand Arena ecosystem:
 
-- `scrape_contests.py` – scrapes current contests from `https://fantasy.grandarena.gg/contests`
-- `scrape_leaderboards.py` – scrapes leaderboard entries from `https://train.grandarena.gg/leaderboards`
+- **`scrape_contests.py`** – Playwright scraper for current contests from `https://fantasy.grandarena.gg/contests`
+- **`fetch_mokis_api.py`** – Fetches mokis data from webhook APIs (no browser). Writes to `data/mokis/champion/` and `data/mokis/non-champion/`.
+- **`launcher.html`** – Web UI to choose what to run (contests, mokis, or both), browser visibility, and schedule; downloads a custom `.bat` to run from your project folder.
 
-All scraped data is written into a dedicated `data` directory so it is easy to keep raw data separated from code.
+All data is written into a dedicated `data` directory so it is easy to keep raw data separated from code.
 
 ---
 
@@ -34,13 +35,15 @@ All scraped data is written into a dedicated `data` directory so it is easy to k
    ```bash
    python run_scraping.py
    ```
-   This runs both the contest and leaderboard scrapers and writes CSV/JSON under `data/`.  
+   This runs both the contest scraper and the mokis fetcher (API, no browser).  
    - Contests only: `python run_scraping.py --contests`  
-   - Leaderboards only: `python run_scraping.py --leaderboards`  
+   - Mokis only: `python run_scraping.py --mokis` (writes to `data/mokis/champion/` and `data/mokis/non-champion/`)  
    - Repeat every 30 minutes: `python run_scraping.py --every 30`  
-   - Show browser: `python run_scraping.py --show`
+   - Show browser (contests only): `python run_scraping.py --show`
 
-**One-click (Windows):** Double-click `run.bat` to set up the venv, install deps, and start the scheduler (runs every 30 minutes until you press Ctrl+C).
+**One-click (Windows):** Double-click `run.bat` to set up the venv, install deps, and start the runner in scheduler mode: **contests** and **mokis** run once, then every 30 minutes until you press Ctrl+C.
+
+**Custom launcher (any OS):** Open `launcher.html` in a browser to pick options (contests only, mokis only, or both; show browser; run once or every N minutes), then click **Start** to download `run_grandarena.bat`. Save the file in your project folder and double-click it to run (Windows). The batch file uses the project’s `.venv` if present.
 
 See sections below for prerequisites, data layout, and detailed options for each script.
 
@@ -75,14 +78,12 @@ source .venv/Scripts/activate  # in Git Bash / WSL
 .venv\Scripts\activate         # in cmd / PowerShell
 ```
 
-3. **Install Python dependencies** (example – adapt to your environment if you already have them):
+3. **Install Python dependencies and Playwright browser**:
 
 ```bash
-pip install playwright
+pip install -r requirements.txt
 playwright install chromium
 ```
-
-If you see import errors for other packages when running the scripts, install them with `pip install <package-name>`.
 
 ---
 
@@ -91,40 +92,26 @@ If you see import errors for other packages when running the scripts, install th
 All scraping output is written under the `data` directory at the project root, using subdirectories per scraper:
 
 - `data/contests/`
-  - `data/contests/contests_open_YYYYMMDD_HHMM.csv`
-  - `data/contests/contests_open_YYYYMMDD_HHMM.json`
+  - `data/contests/contests_open_YYYY-MM-DD_HHMM.csv`
+  - `data/contests/contests_open_YYYY-MM-DD_HHMM.json`
   - `data/contests/contests_open_latest.csv`
   - `data/contests/contests_open_latest.json`
-  - `data/contests/contests_YYYYMMDD_HHMM.csv` (legacy name, still written)
-  - `data/contests/contests_YYYYMMDD_HHMM.json` (legacy name, still written)
+  - `data/contests/contests_YYYY-MM-DD_HHMM.csv` (legacy name, still written)
+  - `data/contests/contests_YYYY-MM-DD_HHMM.json` (legacy name, still written)
   - `data/contests/contests_latest.csv` (legacy name, still written)
   - `data/contests/contests_latest.json` (legacy name, still written)
 
-- `data/leaderboards/`
-  - `data/leaderboards/leaderboards_all_entries_YYYYMMDD_HHMM.csv`
-  - `data/leaderboards/leaderboards_all_entries_YYYYMMDD_HHMM.json`
-  - `data/leaderboards/leaderboards_all_entries_latest.csv`
-  - `data/leaderboards/leaderboards_all_entries_latest.json`
-  - `data/leaderboards/leaderboards_YYYYMMDD_HHMM.csv` (legacy name, still written)
-  - `data/leaderboards/leaderboards_YYYYMMDD_HHMM.json` (legacy name, still written)
-  - `data/leaderboards/leaderboards_latest.csv` (legacy name, still written)
-  - `data/leaderboards/leaderboards_latest.json` (legacy name, still written)
-  - `data/leaderboards/leaderboards_champion_YYYYMMDD_HHMM.csv`
-  - `data/leaderboards/leaderboards_champion_YYYYMMDD_HHMM.json`
-  - `data/leaderboards/leaderboards_champion_latest.csv`
-  - `data/leaderboards/leaderboards_champion_latest.json`
-  - `data/leaderboards/leaderboards_non_champion_YYYYMMDD_HHMM.csv`
-  - `data/leaderboards/leaderboards_non_champion_YYYYMMDD_HHMM.json`
-  - `data/leaderboards/leaderboards_non_champion_latest.csv`
-  - `data/leaderboards/leaderboards_non_champion_latest.json`
+- `data/mokis/` (from API via `run_scraping.py --mokis` or `fetch_mokis_api.py`):
+  - `data/mokis/champion/mokis_YYYY-MM-DD_HHMM.csv`
+  - `data/mokis/champion/mokis_YYYY-MM-DD_HHMM.json`
+  - `data/mokis/champion/mokis_latest.csv`
+  - `data/mokis/champion/mokis_latest.json`
+  - `data/mokis/non-champion/mokis_YYYY-MM-DD_HHMM.csv`
+  - `data/mokis/non-champion/mokis_YYYY-MM-DD_HHMM.json`
+  - `data/mokis/non-champion/mokis_latest.csv`
+  - `data/mokis/non-champion/mokis_latest.json`
 
-- `data/mokis/`
-  - `data/mokis/mokis_all_from_leaderboards_YYYYMMDD_HHMM.csv`
-  - `data/mokis/mokis_all_from_leaderboards_YYYYMMDD_HHMM.json`
-  - `data/mokis/mokis_all_from_leaderboards_latest.csv`
-  - `data/mokis/mokis_all_from_leaderboards_latest.json`
-
-The timestamp format used is `YYYYMMDD_HHMM` in UTC.
+The timestamp format used is `YYYY-MM-DD_HHMM` in UTC (dashes in date for clarity).
 
 ---
 
@@ -166,121 +153,54 @@ python scrape_contests.py --show
 
 **Outputs**
 
-After a successful run you will get:
+After a successful run you will get (under `data/contests/`):
 
-- `data/contests_open_YYYYMMDD_HHMM.csv`
-- `data/contests_open_YYYYMMDD_HHMM.json`
-- `data/contests_open_latest.csv` (overwritten each run)
-- `data/contests_open_latest.json` (overwritten each run)
-- Legacy filenames (`contests_*.csv/json`, `contests_latest.*`) are also still written for compatibility.
+- `data/contests/contests_open_YYYY-MM-DD_HHMM.csv`
+- `data/contests/contests_open_YYYY-MM-DD_HHMM.json`
+- `data/contests/contests_open_latest.csv` (overwritten each run)
+- `data/contests/contests_open_latest.json` (overwritten each run)
+- Legacy filenames (`contests_*.csv/json`, `contests_latest.*`) in the same directory are also written for compatibility.
 
 If no contests are found, the script prints a message and exits with a non-zero status (for easier automation).
 
 ---
 
-### 5. Using the leaderboard scraper (`scrape_leaderboards.py`)
+### 5. Mokis data (API) – `fetch_mokis_api.py`
 
-**Script:** `scrape_leaderboards.py`
+**Script:** `fetch_mokis_api.py`
 
 **What it does**
 
-- Opens `https://train.grandarena.gg/leaderboards`
-- Scrapes both **Champion** and **Non-Champion** leaderboards (configurable)
-- For each leaderboard row, clicks to open the detail modal and collects:
-  - `rank`
-  - `moki_name`
-  - `moki_id`
-  - `score`
-  - `class`
-  - `rarity`
-  - `stat_strength`
-  - `stat_speed`
-  - `stat_defense`
-  - `stat_dexterity`
-  - `stat_fortitude`
-  - `image_url`
-  - `thumbnail_url`
-  - `category` (`Champion` / `Non-Champion`)
-  - `page`
-  - `date_scraped` (UTC)
-- Additionally, after scraping all leaderboard entries it builds a **unique Moki catalogue** (Champions and Non-Champions) derived from those entries and saves it separately.
+- Fetches raw JSON from two webhook URLs (Champion and Non-Champion).
+- Saves the raw API response as JSON and, when the response contains a list of rows, also saves CSV.
+- Writes to `data/mokis/champion/` and `data/mokis/non-champion/`. No filtering of rows or columns.
 
-**Basic run (all pages, both categories, headless)**:
+**How to run**
+
+Standalone:
 
 ```bash
-python scrape_leaderboards.py
+python fetch_mokis_api.py
 ```
 
-**Options**
-
-- `--show` – run with a visible browser
-
-  ```bash
-  python scrape_leaderboards.py --show
-  ```
-
-- `--pages N` – limit the number of pages per category (e.g. scrape only first 3 pages)
-
-  ```bash
-  python scrape_leaderboards.py --pages 3
-  ```
-
-- `--max-rank N` / `--top N` – stop after scraping N ranks per category
-
-- `--category champion` – scrape only champion leaderboard
-
-  ```bash
-  python scrape_leaderboards.py --category champion
-  ```
-
-- `--category non-champion` – scrape only non-champion leaderboard
-
-  ```bash
-  python scrape_leaderboards.py --category non-champion
-  ```
-
-These flags can be combined, for example:
+Or via the runner:
 
 ```bash
-python scrape_leaderboards.py --category champion --pages 5 --show
+python run_scraping.py --mokis
 ```
 
 **Outputs**
 
-On each run you get:
+- `data/mokis/champion/mokis_YYYY-MM-DD_HHMM.csv`, `mokis_YYYY-MM-DD_HHMM.json`, `mokis_latest.csv`, `mokis_latest.json`
+- `data/mokis/non-champion/` – same pattern.
 
-- Combined files (all leaderboard entries):
-  - `data/leaderboards/leaderboards_all_entries_YYYYMMDD_HHMM.csv`
-  - `data/leaderboards/leaderboards_all_entries_YYYYMMDD_HHMM.json`
-  - `data/leaderboards/leaderboards_all_entries_latest.csv` (overwritten each run)
-  - `data/leaderboards/leaderboards_all_entries_latest.json` (overwritten each run)
-  - Legacy names (`data/leaderboards/leaderboards_*.csv/json`, `data/leaderboards/leaderboards_latest.*`) are also still written.
-
-- Per-category files:
-  - `data/leaderboards/leaderboards_champion_YYYYMMDD_HHMM.csv`
-  - `data/leaderboards/leaderboards_champion_YYYYMMDD_HHMM.json`
-  - `data/leaderboards/leaderboards_champion_latest.csv`
-  - `data/leaderboards/leaderboards_champion_latest.json`
-  - `data/leaderboards/leaderboards_non_champion_YYYYMMDD_HHMM.csv`
-  - `data/leaderboards/leaderboards_non_champion_YYYYMMDD_HHMM.json`
-  - `data/leaderboards/leaderboards_non_champion_latest.csv`
-  - `data/leaderboards/leaderboards_non_champion_latest.json`
-
-- Unique Moki catalogue (derived from all leaderboard entries):
-  - `data/mokis/mokis_all_from_leaderboards_YYYYMMDD_HHMM.csv`
-  - `data/mokis/mokis_all_from_leaderboards_YYYYMMDD_HHMM.json`
-  - `data/mokis/mokis_all_from_leaderboards_latest.csv`
-  - `data/mokis/mokis_all_from_leaderboards_latest.json`
-
-  > Note: this catalogue is as complete as the leaderboard UI itself. If some Mokis do not appear on any leaderboard page, they will not be present here.
-
-If no entries are scraped, the script prints a message and exits with code 1.
+On API errors, error-stub JSON files are written so the run is visible and paths are clear.
 
 ---
 
 ### 6. Using the combined runner (`run_scraping.py`)
 
-For a simple, clear interface that shows scraping state and output paths, you can use the combined runner:
+For a simple, clear interface that shows scraping state and output paths, use the combined runner:
 
 ```bash
 python run_scraping.py
@@ -289,7 +209,7 @@ python run_scraping.py
 This will:
 
 - run the contest scraper (open contests) and print how many contests were saved plus all CSV/JSON paths written
-- run the leaderboard scraper, print how many entries and unique Mokis were saved, and list output file paths
+- run the **mokis** step via API (no browser). Prints entry counts and output file paths.
 
 Common options:
 
@@ -299,13 +219,13 @@ Common options:
   python run_scraping.py --contests
   ```
 
-- **Run only leaderboards + Mokis**:
+- **Run only mokis** (writes to `data/mokis/champion/` and `data/mokis/non-champion/`):
 
   ```bash
-  python run_scraping.py --leaderboards
+  python run_scraping.py --mokis
   ```
 
-- **Run every 30 minutes (scheduler)** – repeat scraping until you press Ctrl+C:
+- **Run every 30 minutes (scheduler)** – repeat until you press Ctrl+C:
 
   ```bash
   python run_scraping.py --every 30
@@ -313,31 +233,17 @@ Common options:
 
   You can use any interval in minutes, e.g. `--every 15` or `--every 60`.
 
-- **Show browser windows while scraping**:
+- **Show browser windows** (contests scraper only):
 
   ```bash
   python run_scraping.py --show
-  ```
-
-- **Limit leaderboard pages / focus on one category**:
-
-  ```bash
-  python run_scraping.py --leaderboards --pages 5 --category champion
-  ```
-
-- **Limit leaderboard ranks per category** (faster test runs):
-
-  ```bash
-  python run_scraping.py --leaderboards --max-rank 500
   ```
 
 The runner prints timestamps and summaries so you can easily see the scraping state from the terminal.
 
 ---
 
-### 7. One-click run (Windows, for juniors)
-
-If you want to run the whole project with a single double-click, use the batch file:
+### 7. One-click run (Windows)
 
 1. **Double-click `run.bat`** (in the project root).
 
@@ -346,7 +252,7 @@ The batch file will:
 - Create a Python virtual environment (`.venv`) if it doesn’t exist
 - Install dependencies from `requirements.txt` (Playwright)
 - Install the Playwright Chromium browser
-- Start the scraper in **scheduler mode**: run once, then every **30 minutes**, until you press **Ctrl+C** in the window
+- Start the runner in **scheduler mode**: run **contests** and **mokis** once, then every **30 minutes**, until you press **Ctrl+C** in the window. Mokis are fetched via API (no browser).
 
 **Requirements:** Python 3.10+ must be installed and on your PATH ([python.org/downloads](https://www.python.org/downloads/)). On Windows, the Python installer option “Add Python to PATH” should be checked.
 
@@ -354,11 +260,23 @@ To stop the scheduler, focus the command window and press **Ctrl+C** (once is en
 
 ---
 
-### 8. Notes for automation
+### 8. Web launcher (`launcher.html`)
 
-- Both scripts are suitable for use in scheduled tasks (e.g. Windows Task Scheduler, cron, CI jobs).
+Open **`launcher.html`** in a web browser for a simple UI that lets you:
+
+- Choose what to run: **Both** (contests + mokis), **Contests only**, or **Mokis only**
+- Toggle **Show browser windows** (for the contest scraper)
+- Set **Run once** or **Every N minutes**
+
+Click **Start – download launcher** to download `run_grandarena.bat`. Save it in your project root (e.g. `C:\git\grandarena`), then double-click to run. The batch file activates `.venv` if it exists and runs `run_scraping.py` with the options you selected. Useful when you want a one-off or custom schedule without editing the command line.
+
+---
+
+### 9. Notes for automation
+
+- All scripts are suitable for use in scheduled tasks (e.g. Windows Task Scheduler, cron, CI jobs). Mokis are fetched via API (no browser).
 - Exit codes:
-  - `0` – success (data scraped and written)
+  - `0` – success (data scraped or fetched and written)
   - `1` – no data found or an early-abort condition
 - You can safely run these scripts repeatedly; timestamped files will accumulate in `data/`, while the `*_latest.*` files are always overwritten.
 
@@ -368,12 +286,12 @@ Example cron-style usage (pseudo-syntax, adapt for your scheduler):
 cd /c/git/grandarena
 source .venv/Scripts/activate
 python scrape_contests.py
-python scrape_leaderboards.py --pages 5
+python run_scraping.py --mokis
 ```
 
 ---
 
-### 9. Troubleshooting
+### 10. Troubleshooting
 
 - **No data / empty files**
   - Check if the target websites have changed their structure or require login.
@@ -382,5 +300,5 @@ python scrape_leaderboards.py --pages 5
   - Make sure you have run `playwright install chromium`.
   - Ensure your Python version is compatible with the installed Playwright version.
 - **Slow or flaky runs**
-  - Network or site-side throttling can cause timeouts; re-run the script or reduce pages via `--pages`.
+  - Network or site-side throttling can cause timeouts; re-run the script.
 
